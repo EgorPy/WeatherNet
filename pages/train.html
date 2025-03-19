@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>Обучение модели</title>
+</head>
+<body>
+<div class="container">
+    <h1>Обучение модели</h1>
+    <h3>Тренировка новой модели может занять большое количество времени</h3>
+    <form id="train-form">
+        <label>
+            <input type="radio" name="train_option" value="false" checked>
+            Обучить новую модель
+        </label>
+        <label>
+            <input type="radio" name="train_option" value="true">
+            Использовать ранее обученную модель
+        </label>
+        <br>
+        <label>
+            Количество эпох:
+            <input type="number" id="epochs" name="epochs" min="100" value="500" max="2000">
+        </label>
+        <button type="submit" class="btn">Продолжить</button>
+    </form>
+    <div id="accuracy"></div>
+    <img id="loss-chart" src="/static/loss_plot.png" alt="График потерь" class="plot" style="display: none;">
+    <a href="/" class="back">Назад</a>
+</div>
+
+<script>
+    document.getElementById("train-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        const button = event.target.querySelector("button");
+        button.disabled = true;
+        button.textContent = "Обработка...";
+
+        const option = document.querySelector('input[name="train_option"]:checked').value;
+        const epochs = document.getElementById("epochs").value;
+        const formData = new URLSearchParams();
+        formData.append("use_existing", option);
+        formData.append("epochs", epochs);
+
+        try {
+            const response = await fetch("/train/", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: formData
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                let accuracyHTML = `<p>Результат: ${data.message}</p>`;
+
+                if (!option.includes("true")) {
+                    accuracyHTML += `
+                    <p>MAE: ${data.mae.toFixed(2)}</p>
+                    <p>MSE: ${data.mse.toFixed(2)}</p>
+                    <p>RMSE: ${data.rmse.toFixed(2)}</p>
+                    <p>R²: ${data.r2.toFixed(2)}</p>`;
+                    document.getElementById("loss-chart").style.display = "block";
+                } else {
+                    document.getElementById("loss-chart").style.display = "none";
+                }
+
+                document.getElementById("accuracy").innerHTML = accuracyHTML;
+            } else {
+                document.getElementById("accuracy").innerHTML =
+                `<p class='error'>Ошибка: ${data.detail}</p>`;
+            }
+        } catch (error) {
+            document.getElementById("accuracy").innerHTML =
+            `<p class='error'>Ошибка ${error}</p>`;
+        }
+
+        button.disabled = false;
+        button.textContent = "Продолжить";
+    });
+</script>
+</body>
+</html>
