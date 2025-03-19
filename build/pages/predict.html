@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>Предсказание</title>
+</head>
+<body>
+    <div class="container">
+        <h1>Результат предсказания</h1>
+        <button id="predict-btn" class="btn">Сделать прогноз</button>
+        <div id="prediction-result"></div>
+        <div id="accuracy"></div>
+        <img id="prediction-plot" src="/static/prediction_plot.png" alt="График прогноза" class="plot" style="display: none;">
+        <button id="save-btn" class="btn" style="display: none; margin: 20px auto 10px auto">Сохранить в файл</button>
+        <a href="/" class="back">Назад</a>
+    </div>
+
+    <script>
+        let lastPrediction = null;
+
+        document.getElementById("predict-btn").addEventListener("click", async function () {
+            const button = this;
+            button.disabled = true;
+            button.textContent = "Предсказание...";
+
+            try {
+                const response = await fetch("/predict/", { method: "POST" });
+                const data = await response.json();
+
+                if (response.ok) {
+                    lastPrediction = data;
+                    const months = [
+                        "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+                        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+                    ];
+                    let resultHtml = "<h2>Прогноз на следующий год:</h2><ul>";
+                    data.prediction.forEach((temp, index) => {
+                        resultHtml += `<li><strong>${months[index]}:</strong> ${temp} ℃</li>`;
+                    });
+                    resultHtml += "</ul>";
+
+                    document.getElementById("prediction-result").innerHTML = resultHtml;
+                    document.getElementById("prediction-plot").style.display = "block";
+                    document.getElementById("accuracy").innerHTML = "";
+                    document.getElementById("accuracy").innerHTML += `<p>MAE: ${data.mae.toFixed(2)}</p>`
+                    document.getElementById("accuracy").innerHTML += `<p>MSE: ${data.mse.toFixed(2)}</p>`
+                    document.getElementById("accuracy").innerHTML += `<p>RMSE: ${data.rmse.toFixed(2)}</p>`
+                    document.getElementById("accuracy").innerHTML += `<p>R²: ${data.r2.toFixed(2)}</p>`
+
+                    document.getElementById("save-btn").style.display = "block";
+                } else {
+                    document.getElementById("prediction-result").innerHTML =
+                    "<p class='error'>Ошибка: " + data.detail + "</p>";
+                }
+            } catch (error) {
+                document.getElementById("prediction-result").innerHTML =
+                `<p class='error'>Ошибка ${error}</p>`;
+            }
+
+            button.disabled = false;
+            button.textContent = "Сделать прогноз";
+        });
+
+        document.getElementById("save-btn").addEventListener("click", function () {
+            if (!lastPrediction) return;
+
+            const content = `Прогноз на 2025 год:\n` +
+            lastPrediction.prediction.map((temp, index) =>
+            `${index + 1}: ${temp} ℃`
+            ).join("\n") +
+            `\n\nMAE: ${lastPrediction.mae.toFixed(2)}\nMSE: ${lastPrediction.mse.toFixed(2)}\nRMSE: ${lastPrediction.rmse.toFixed(2)}\nR²: ${lastPrediction.r2.toFixed(2)}`;
+
+            const blob = new Blob([content], { type: "text/plain" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "prediction.txt";
+            a.click();
+        });
+    </script>
+</body>
+</html>
