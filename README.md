@@ -11,6 +11,11 @@
 - Веб-интерфейс на FastAPI
 
 ## Запуск проекта
+- Зайдите в релизы и скачайте build.zip
+- Распакуйте архив build.zip
+- Запустите файл main.exe
+
+## Запуск кода
 ```sh
 pip install -r requirements.txt
 cd WeatherNet/
