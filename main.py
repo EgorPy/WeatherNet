@@ -7,6 +7,9 @@ from config import UPLOAD_DIR, SESSION_FILE, MODEL_PATH
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+import webbrowser
+import threading
+import uvicorn
 import json
 import os
 
@@ -208,3 +211,22 @@ async def predict():
         "rmse": raw_prediction["rmse"],
         "r2": raw_prediction["r2"]
     })
+
+
+def start_server():
+    """ Запускает сервер """
+
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
+
+
+def run():
+    """ Обрабатывает запуск сервера """
+
+    server_thread = threading.Thread(target=start_server, daemon=True)
+    server_thread.start()
+    webbrowser.open("http://127.0.0.1:8000")
+    server_thread.join()
+
+
+if __name__ == '__main__':
+    run()

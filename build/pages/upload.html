@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>Загрузка данных</title>
+</head>
+<body>
+<div class="container">
+    <h1>Загрузите файл с данными</h1>
+
+    <form id="upload-form" method="post" enctype="multipart/form-data">
+        <input type="file" id="file-input" name="file" required>
+
+        <label for="delimiter">Выберите разделитель:</label>
+        <select id="delimiter" name="delimiter">
+            <option value=",">Запятая (,)</option>
+            <option value=" ">Пробел</option>
+            <option value=";">Точка с запятой (;)</option>
+            <option value="custom">Другой</option>
+        </select>
+        <input type="text" id="custom-delimiter" name="custom-delimiter" placeholder="Введите свой" style="display: none;">
+
+        <br>
+
+        <label class="checkbox">
+            <input type="checkbox" id="ignore-header" name="ignore-header"> Игнорировать первую строку данных
+        </label>
+
+        <button type="submit" class="btn">Загрузить</button>
+    </form>
+
+    <a href="/" class="back">Назад</a>
+    <div id="message"></div>
+</div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>
