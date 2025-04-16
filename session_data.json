@@ -1,1 +1,1 @@
-{"file_path": "uploads\\data.txt", "delimiter": ",", "ignore_header": true}
+{"file_path": "uploads\\data.txt", "delimiter": ",", "ignore_header": false}

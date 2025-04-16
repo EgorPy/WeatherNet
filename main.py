@@ -1,12 +1,13 @@
 """ Главный исполняемый файл """
 
-from model import load_data_from_txt, train_model, predict_next_year, save_prediction
+from model import load_data_from_txt, train_model, predict_year, save_prediction, train_progress, compute_accuracy
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Query, Form
 from fastapi.responses import JSONResponse, FileResponse
 from config import UPLOAD_DIR, SESSION_FILE, MODEL_PATH
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi import BackgroundTasks
 import webbrowser
 import threading
 import uvicorn
@@ -65,7 +66,7 @@ async def train_page(request: Request):
 async def predict_page(request: Request):
     """ Страница предсказания """
 
-    return templates.TemplateResponse("predict.html", {"request": request})
+    return templates.TemplateResponse("predict.html", {"request": request, "years": list(range(2024, 2031))})
 
 
 @app.get("/plots/", response_class=HTMLResponse)
@@ -90,15 +91,8 @@ async def list_models():
         return JSONResponse(content=[])
     files = os.listdir(os.path.dirname(MODEL_PATH))
 
-    session_data = load_session()
-    file_path = session_data["file_path"]
-    data = load_data_from_txt(file_path, session_data["delimiter"], session_data["ignore_header"])
-    accuracy = predict_next_year(data)
     return JSONResponse({
-        "files": files,
-        "mae": accuracy["mae"],
-        "mse": accuracy["mse"],
-        "rmse": accuracy["rmse"]
+        "files": files
     })
 
 
@@ -106,8 +100,9 @@ async def list_models():
 async def get_upload(filename: str):
     """ API endpoint для скачивания указанной модели """
 
-    if os.path.exists(filename):
-        return FileResponse(filename)
+    filepath = os.path.join("models", filename)
+    if os.path.exists(filepath):
+        return FileResponse(filepath)
     return JSONResponse({"error": "File not found"}, status_code=404)
 
 
@@ -167,8 +162,42 @@ async def upload_file(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.get("/train/progress/")
+def get_train_progress():
+    """ API endpoint для получения текущего прогресса обучения модели """
+
+    return JSONResponse(content={
+        "done": train_progress.get("done", False),
+        "current": train_progress.get("current", 0),
+        "accuracy": train_progress.get("accuracy", None),
+        "total": train_progress.get("total", 0)
+    })
+
+
+@app.get("/accuracy/")
+async def get_accuracy():
+    """ API endpoint для оценки точности модели """
+
+    session_data = load_session()
+    if "file_path" not in session_data:
+        return JSONResponse(status_code=400, content={"detail": "Нет данных для обучения"})
+
+    file_path = session_data["file_path"]
+    data = load_data_from_txt(file_path, session_data["delimiter"], session_data["ignore_header"])
+
+    accuracy = compute_accuracy(data)
+
+    return JSONResponse({
+        "message": "Модель обучена и сохранена",
+        "mae": accuracy["mae"],
+        "mse": accuracy["mse"],
+        "rmse": accuracy["rmse"],
+        "r2": accuracy["r2"]
+    })
+
+
 @app.post("/train/")
-async def train(use_existing: bool = Form(True), epochs: int = Form(500)):
+async def train(background_tasks: BackgroundTasks, use_existing: bool = Query(True), epochs: int = Form(500)):
     """ API endpoint для обучения модели """
 
     session_data = load_session()
@@ -178,20 +207,25 @@ async def train(use_existing: bool = Form(True), epochs: int = Form(500)):
     file_path = session_data["file_path"]
     data = load_data_from_txt(file_path, session_data["delimiter"], session_data["ignore_header"])
 
-    if not use_existing:
+    def train_task():
+        """ Обучение модели """
+
         accuracy = train_model(data, epochs)
-        return JSONResponse({
-            "message": "Модель обучена и сохранена",
-            "mae": accuracy["mae"],
-            "mse": accuracy["mse"],
-            "rmse": accuracy["rmse"],
-            "r2": accuracy["r2"]
-        })
-    return JSONResponse({"message": "Загружена ранее обученная модель"})
+        train_progress["done"] = True
+        train_progress.update(accuracy)
+        print(f"Обучение завершено. Точность: {accuracy}")
+
+    train_progress.clear()
+    train_progress["done"] = False
+    background_tasks.add_task(train_task)
+
+    if use_existing:
+        return JSONResponse({"message": "Загружена ранее обученная модель"})
+    return JSONResponse({"message": "Обучение начато", "accuracy": None})
 
 
 @app.post("/predict/")
-async def predict():
+async def predict(year: int = Form(...)):
     """ API endpoint для предсказания температуры следующего года """
 
     session_data = load_session()
@@ -200,16 +234,16 @@ async def predict():
 
     file_path = session_data["file_path"]
     data = load_data_from_txt(file_path, session_data["delimiter"], session_data["ignore_header"])
-    raw_prediction = predict_next_year(data)
+    raw_prediction = predict_year(data, year)
     prediction = raw_prediction["prediction"]
-    save_prediction(prediction)
+    save_prediction(prediction, year)
 
     return JSONResponse({
-        "prediction": [round(i, 2) for i in prediction.tolist()],
-        "mae": raw_prediction["mae"],
-        "mse": raw_prediction["mse"],
-        "rmse": raw_prediction["rmse"],
-        "r2": raw_prediction["r2"]
+        "prediction": [round(i, 2) for i in prediction[-1].tolist()],
+        "mae": None,
+        "mse": None,
+        "rmse": None,
+        "r2": None
     })
 
 

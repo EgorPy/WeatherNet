@@ -7,30 +7,78 @@ import numpy as np
 import sqlite3
 import os
 
+train_progress = {
+    "current": 0,
+    "total": 100,
+    "done": True
+}
 
-def train_model(data, epochs=500):
+
+class ProgressCallback(keras.callbacks.Callback):
+    """ Класс для обновления прогресса обучения модели """
+
+    def __init__(self, total_epochs, update_callback=None):
+        super().__init__()
+        self.total = total_epochs
+        self.update_callback = update_callback
+
+    # В ProgressCallback
+    def on_epoch_end(self, epoch, logs=None):
+        """ Обновляет прогресс обучения """
+
+        train_progress["current"] = int((epoch + 1) / self.total * 100) if self.total else 0
+        train_progress["total"] = 99
+        train_progress["done"] = False
+        if self.update_callback:
+            self.update_callback(train_progress)
+
+    def on_train_end(self, logs=None):
+        """ Обновление прогресса в конце обучения """
+
+        train_progress["current"] = 100
+        train_progress["done"] = True
+
+
+def train_model(data, epochs=500, window_size=3, progress_callback=None):
     """ Обучает LSTM-модель и оценивает точность """
 
-    x = data[:-1].reshape(-1, 12, 1)  # 2014-2023 (9 лет)
-    y = data[1:].reshape(-1, 12)  # 2015-2024 (9 лет)
+    x_train = []
+    y_train = []
+
+    for i in range(len(data) - window_size):
+        x_train.append(data[i:i + window_size])  # (window_size, 12)
+        y_train.append(data[i + window_size])  # (12,)
+
+    x_train = np.array(x_train)  # shape: (N, window_size, 12)
+    y_train = np.array(y_train)  # shape: (N, 12)
 
     model = keras.Sequential([
-        keras.layers.LSTM(128, return_sequences=True, input_shape=(12, 1)),
+        keras.layers.LSTM(128, return_sequences=True, input_shape=(window_size, 12)),
         keras.layers.LSTM(64, return_sequences=True),
         keras.layers.LSTM(32, return_sequences=False),
         keras.layers.Dense(12)
     ])
 
-    model.compile(optimizer="adam", loss="mae")
-    history = model.fit(x, y, epochs=epochs, batch_size=8, verbose=0)
+    optimizer = keras.optimizers.Adam(learning_rate=0.0005)
+    model.compile(optimizer=optimizer, loss="mae")
+    progress = ProgressCallback(epochs, progress_callback)
 
-    predictions = model.predict(x)
-    mae = np.mean(np.abs(y - predictions))
-    mse = np.mean((y - predictions) ** 2)
+    history = model.fit(
+        x_train,
+        y_train,
+        epochs=epochs,
+        batch_size=4,
+        verbose=2,
+        callbacks=[progress]
+    )
+
+    predictions = model.predict(x_train)
+    mae = np.mean(np.abs(y_train - predictions))
+    mse = np.mean((y_train - predictions) ** 2)
     rmse = np.sqrt(mse)
 
-    ss_total = np.sum((y - np.mean(y)) ** 2)
-    ss_residual = np.sum((y - predictions) ** 2)
+    ss_total = np.sum((y_train - np.mean(y_train)) ** 2)
+    ss_residual = np.sum((y_train - predictions) ** 2)
     r2_score = 1 - (ss_residual / ss_total)
 
     model.save(MODEL_PATH)
@@ -39,8 +87,37 @@ def train_model(data, epochs=500):
     return {"mae": mae, "mse": mse, "rmse": rmse, "r2": r2_score}
 
 
-def predict_next_year(data):
-    """ Предсказывает температуру следующего года используя обученную модель """
+def compute_accuracy(data, window_size=3):
+    """ Вычисляет точность модели для данных """
+
+    x_train = []
+    y_train = []
+    for i in range(len(data) - window_size):
+        x_train.append(data[i:i + window_size])
+        y_train.append(data[i + window_size])
+
+    x_train = np.array(x_train)
+    y_train = np.array(y_train)
+
+    model = keras.models.load_model(MODEL_PATH)
+    predictions = model.predict(x_train)
+
+    mae = np.mean(np.abs(y_train - predictions))
+    mse = np.mean((y_train - predictions) ** 2)
+    rmse = np.sqrt(mse)
+
+    ss_total = np.sum((y_train - np.mean(y_train)) ** 2)
+    ss_residual = np.sum((y_train - predictions) ** 2)
+    r2_score = 1 - (ss_residual / ss_total)
+
+    return {"mae": mae, "mse": mse, "rmse": rmse, "r2": r2_score}
+
+
+def predict_year(data, target_year, window_size=3, seed=None):
+    """ Предсказывает температуру выбранного года 2025 - 2030 используя обученную модель """
+
+    if not (2024 <= target_year <= 2030):
+        raise ValueError("Год должен быть в диапазоне от 2025 до 2030.")
 
     if not os.path.exists(MODEL_PATH):
         raise FileNotFoundError("Модель не обучена.")
@@ -48,26 +125,38 @@ def predict_next_year(data):
     model = keras.models.load_model(MODEL_PATH, compile=False)
     model.compile(optimizer="adam", loss="mae")
 
-    last_year = data[-1].reshape(1, 12, 1)
-    prediction = model.predict(last_year)[0]
+    if seed is not None:
+        np.random.seed(seed)
 
-    actual_2024 = data[-1]  # = y
-    mae = np.mean(np.abs(prediction - actual_2024))
-    mse = np.mean((actual_2024 - prediction) ** 2)
-    rmse = np.sqrt(mse)
+    steps = target_year - 2024
+    current_data = np.copy(data)  # shape: (N, 12)
 
-    ss_total = np.sum((actual_2024 - np.mean(actual_2024)) ** 2)
-    ss_residual = np.sum((actual_2024 - prediction) ** 2)
-    r2_score = 1 - (ss_residual / ss_total)
+    for _ in range(steps):
+        window = current_data[-window_size:]  # shape: (window_size, 12)
+        window_input = window.reshape(1, window_size, 12)
+        predicted = model.predict(window_input, verbose=0)[0]
 
-    last_year = data[-1].reshape(1, 12, 1)
+        noise = np.random.normal(loc=0.0, scale=0.3, size=12)  # шум (+-0.5 градуса)
+        noisy_prediction = np.clip(predicted + noise, -100, 100)
+
+        current_data = np.vstack([current_data, noisy_prediction])
+
     return {
-        "prediction": np.round(model.predict(last_year)[0], 2),
-        "mae": mae,
-        "mse": mse,
-        "rmse": rmse,
-        "r2": r2_score
+        "year": target_year,
+        "prediction": current_data
     }
+
+
+def get_first_year_from_txt(file_path: str, delimiter: str = " ", ignore_header: bool = False):
+    """ Возвращает первый год известных данных """
+
+    with open(file_path, "r") as file:
+        file.readline() if ignore_header else None
+        string = file.readline()
+        d = string.find(delimiter)
+        year = string[d + 1:string.find(delimiter, d + 1)]
+        if year.isdigit():
+            return int(year)
 
 
 def load_data_from_txt(file_path: str, delimiter: str = " ", ignore_header: bool = False):
@@ -103,34 +192,7 @@ def load_first_10():
     return data
 
 
-def plot_temperature(predictions):
-    """ Создаёт график температур """
-
-    months_names = ["Январь",
-                    "Февраль",
-                    "Март",
-                    "Апрель",
-                    "Май",
-                    "Июнь",
-                    "Июль",
-                    "Август",
-                    "Сентябрь",
-                    "Октябрь",
-                    "Ноябрь",
-                    "Декабрь"]
-    months = [months_names[i] for i in range(12)]
-    plt.figure(figsize=(10, 5))
-    plt.plot(months, predictions, marker='o', linestyle='-', color='r', label="Predicted Temperature")
-    plt.xlabel("Month")
-    plt.ylabel("Temperature (°C)")
-    plt.title("Predicted Monthly Temperatures for 2025")
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(PREDICTION_PLOT)
-    plt.show()
-
-
-def save_prediction(predictions):
+def save_prediction(predictions, year):
     """ Сохраняет график температур """
 
     if os.path.exists(PREDICTION_PLOT):
@@ -149,26 +211,13 @@ def save_prediction(predictions):
                     "Декабрь"]
     months = [months_names[i] for i in range(12)]
     plt.figure(figsize=(10, 5))
-    plt.plot(months, predictions, marker='o', linestyle='-', color='r', label="Predicted Temperature")
+    plt.plot(months, predictions[-1], marker='o', linestyle='-', color='r', label="Predicted Temperature")
     plt.xlabel("Month")
     plt.ylabel("Temperature (°C)")
-    plt.title("Predicted Monthly Temperatures for 2025")
+    plt.title(f"Predicted Monthly Temperatures for {year}")
     plt.legend()
     plt.grid(True)
     plt.savefig(PREDICTION_PLOT)
-
-
-def plot_loss_chart(history):
-    """ Создаёт график потерь """
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(history.history["loss"], label="Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.title("Training Loss Over Epochs")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
 
 
 def save_loss_chart(history):

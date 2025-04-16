@@ -25,14 +25,50 @@
             Количество эпох:
             <input type="number" id="epochs" name="epochs" min="100" value="500" max="2000">
         </label>
-        <button type="submit" class="btn">Продолжить</button>
+        <button type="submit" class="btn" id="train-btn">Продолжить</button>
     </form>
-    <div id="accuracy"></div>
+
+    <progress id="progress-bar" value="0" max="100" style="width: 100%; display: none;"></progress>
+
+    <div id="accuracy" style="margin-top: 20px;"></div>
     <img id="loss-chart" src="/static/loss_plot.png" alt="График потерь" class="plot" style="display: none;">
     <a href="/" class="back">Назад</a>
 </div>
 
 <script>
+    function reloadImage() {
+        const img = document.getElementById("loss-chart");
+        img.src = "/static/loss_plot.png?v=" + new Date().getTime();
+    }
+
+    async function pollProgress() {
+        const res = await fetch("/train/progress/");
+        const data = await res.json();
+
+        if (data.done) {
+            let html = "<p>Модель обучена!</p>";
+            const response = await fetch(`/accuracy/`, {method: "GET",});
+            const train_data = await response.json();
+            document.getElementById("loss-chart").style.display = "block";
+            reloadImage();
+            if (train_data.mae != null) {
+                html += `
+                    <p>MAE: ${train_data.mae.toFixed(2)}</p>
+                    <p>MSE: ${train_data.mse.toFixed(2)}</p>
+                    <p>RMSE: ${train_data.rmse.toFixed(2)}</p>
+                    <p>R²: ${train_data.r2.toFixed(2)}</p>
+                `;
+            }
+            document.getElementById("accuracy").innerHTML = html;
+        } else {
+            const progressBar = document.getElementById("progress-bar");
+            progressBar.max = data.total;
+            progressBar.min = 0;
+            progressBar.value = data.current;
+            setTimeout(pollProgress, 500);
+        }
+    }
+
     document.getElementById("train-form").addEventListener("submit", async function (event) {
         event.preventDefault();
         const button = event.target.querySelector("button");
@@ -42,7 +78,6 @@
         const option = document.querySelector('input[name="train_option"]:checked').value;
         const epochs = document.getElementById("epochs").value;
         const formData = new URLSearchParams();
-        formData.append("use_existing", option);
         formData.append("epochs", epochs);
 
         try {
@@ -52,33 +87,24 @@
                 body: formData
             });
             const data = await response.json();
+            console.log(data);
 
             if (response.ok) {
-                let accuracyHTML = `<p>Результат: ${data.message}</p>`;
-
-                if (!option.includes("true")) {
-                    accuracyHTML += `
-                    <p>MAE: ${data.mae.toFixed(2)}</p>
-                    <p>MSE: ${data.mse.toFixed(2)}</p>
-                    <p>RMSE: ${data.rmse.toFixed(2)}</p>
-                    <p>R²: ${data.r2.toFixed(2)}</p>`;
-                    document.getElementById("loss-chart").style.display = "block";
+                if (option === "false") {
+                    const progressBar = document.getElementById("progress-bar");
+                    progressBar.style.display = "block"
+                    pollProgress();
                 } else {
-                    document.getElementById("loss-chart").style.display = "none";
+                    document.getElementById("accuracy").innerHTML = `<p>${data.message}</p>`;
                 }
-
-                document.getElementById("accuracy").innerHTML = accuracyHTML;
             } else {
-                document.getElementById("accuracy").innerHTML =
-                `<p class='error'>Ошибка: ${data.detail}</p>`;
+                document.getElementById("accuracy").innerHTML = `<p class='error'>Ошибка: ${data.detail}</p>`;
             }
         } catch (error) {
-            document.getElementById("accuracy").innerHTML =
-            `<p class='error'>Ошибка ${error}</p>`;
+            document.getElementById("accuracy").innerHTML = `<p class='error'>Ошибка: ${error}</p>`;
         }
 
-        button.disabled = false;
-        button.textContent = "Продолжить";
+        button.style.display = "none"
     });
 </script>
 </body>

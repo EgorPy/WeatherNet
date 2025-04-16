@@ -7,14 +7,22 @@
     <link rel="stylesheet" href="/static/style.css">
     <title>Графики</title>
 </head>
-<body>
+<body onload="reloadImages()">
     <div class="container">
         <h1>Графики</h1>
         <div class="plot-container">
-            <img id="loss-chart" src="/static/prediction_plot.png" alt="График прогноза" class="plot">
-            <img id="prediction-plot" src="/static/loss_plot.png" alt="График потерь" class="plot">
+            <img id="prediction-plot" src="/static/prediction_plot.png" alt="График прогноза" class="plot">
+            <img id="loss-chart" src="/static/loss_plot.png" alt="График потерь" class="plot">
         </div>
         <a href="/" class="back">Назад</a>
     </div>
+
+    <script>
+        function reloadImages() {
+            const timestamp = new Date().getTime();
+            document.getElementById("prediction-plot").src = "/static/prediction_plot.png?v=" + timestamp;
+            document.getElementById("loss-chart").src = "/static/loss_plot.png?v=" + timestamp;
+        }
+    </script>
 </body>
 </html>

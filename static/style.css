@@ -131,6 +131,7 @@ label {
 }
 
 select, input[type="text"] {
+    border: none;
     width: 12vw;
     padding: 12px;
     font-size: 18px;
@@ -292,6 +293,11 @@ option {
 #message {
     font-size: 20px;
     margin: 10px;
+}
+
+progress {
+    height: 20px;
+    border-radius: 5px;
 }
 
 @media (max-width: 500px) {
