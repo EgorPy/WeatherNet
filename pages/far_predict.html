@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>Предсказание</title>
+</head>
+<body>
+<div class="container">
+    <h1>Результат предсказания</h1>
+
+    <form id="predict-form">
+        <label for="year">Выберите год:</label>
+        <select id="year" name="year">
+            {% for year in years %}
+            <option value="{{ year }}">{{ year }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn">Сделать прогноз</button>
+    </form>
+
+    <div id="prediction-result"></div>
+    <div id="accuracy"></div>
+    <img id="prediction-plot" src="/static/prediction_plot.png" alt="График прогноза" class="plot" style="display: none;">
+    <button id="save-btn" class="btn" style="display: none; margin: 20px auto 10px auto">Сохранить в файл</button>
+    <a href="/" class="back">Назад</a>
+</div>
+
+<script>
+    let lastPrediction = null;
+    let selectedYear = null;
+
+    function reloadImage() {
+        const img = document.getElementById("prediction-plot");
+        img.src = "/static/prediction_plot.png?v=" + new Date().getTime();
+    }
+
+    document.getElementById("predict-form").addEventListener("submit", async function (e) {
+        e.preventDefault();
+
+        const year = document.getElementById("year").value;
+        selectedYear = year;
+
+        const formData = new FormData();
+        formData.append("year", year);
+
+        const button = this.querySelector("button");
+        button.disabled = true;
+        button.textContent = "Предсказание...";
+
+        try {
+            const response = await fetch("/far_predict/", {
+                method: "POST",
+                body: formData
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                lastPrediction = data;
+
+                const months = [
+                    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+                    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+                ];
+                let resultHtml = `<h2>Прогноз на ${year} год:</h2><ul>`;
+                data.prediction.forEach((temp, index) => {
+                    resultHtml += `<li><strong>${months[index]}:</strong> ${temp} ℃</li>`;
+                });
+                resultHtml += "</ul>";
+
+                document.getElementById("prediction-result").innerHTML = resultHtml;
+                document.getElementById("prediction-plot").style.display = "block";
+
+                document.getElementById("save-btn").style.display = "block";
+            } else {
+                document.getElementById("prediction-result").innerHTML =
+                "<p class='error'>Ошибка: " + data.detail + "</p>";
+            }
+        } catch (error) {
+            document.getElementById("prediction-result").innerHTML =
+            `<p class='error'>Ошибка: ${error}</p>`;
+        }
+
+        button.disabled = false;
+        button.textContent = "Сделать прогноз";
+        reloadImage();
+    });
+
+    document.getElementById("save-btn").addEventListener("click", function () {
+        if (!lastPrediction || !selectedYear) return;
+
+        const content = `Прогноз на ${selectedYear} год:\n` +
+        lastPrediction.prediction.map((temp, index) =>
+        `${index + 1}: ${temp} ℃`
+        ).join("\n");
+
+        const blob = new Blob([content], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `prediction_${selectedYear}.txt`;
+        a.click();
+    });
+</script>
+</body>
+</html>

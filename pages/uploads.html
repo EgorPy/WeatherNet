@@ -20,8 +20,8 @@
             const files = await response.json();
             const fileList = document.getElementById("file-list");
             fileList.innerHTML = files.length > 0
-                ? files.map(file => `<li><a href="/uploads/${file}" target="_blank">${file}</a></li>`).join("")
-                : "<p>Файлов нет</p>";
+            ? files.map(file => `<li><a href="/uploads/${file}?v=${Date.now()}" target="_blank">${file}</a></li>`).join("")
+            : "<p>Файлов нет</p>";
         }
 
         loadFiles();

@@ -47,17 +47,18 @@
 
         if (data.done) {
             let html = "<p>Модель обучена!</p>";
-            const response = await fetch(`/accuracy/`, {method: "GET",});
+            await new Promise(r => setTimeout(r, 1000));
+            const response = await fetch(`/accuracy/`, { method: "GET" });
             const train_data = await response.json();
             document.getElementById("loss-chart").style.display = "block";
             reloadImage();
             if (train_data.mae != null) {
                 html += `
-                    <p>MAE: ${train_data.mae.toFixed(2)}</p>
-                    <p>MSE: ${train_data.mse.toFixed(2)}</p>
-                    <p>RMSE: ${train_data.rmse.toFixed(2)}</p>
-                    <p>R²: ${train_data.r2.toFixed(2)}</p>
-                `;
+                <p>MAE: ${train_data.mae.toFixed(2)}</p>
+                <p>MSE: ${train_data.mse.toFixed(2)}</p>
+                <p>RMSE: ${train_data.rmse.toFixed(2)}</p>
+                <p>R²: ${train_data.r2.toFixed(2)}</p>
+            `;
             }
             document.getElementById("accuracy").innerHTML = html;
         } else {
@@ -87,7 +88,6 @@
                 body: formData
             });
             const data = await response.json();
-            console.log(data);
 
             if (response.ok) {
                 if (option === "false") {

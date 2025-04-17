@@ -1,12 +1,13 @@
 """ Главный исполняемый файл """
 
-from model import load_data_from_txt, train_model, predict_year, save_prediction, train_progress, compute_accuracy
+from model import load_data_from_txt, train_model, predict_next_year, save_prediction, train_progress, compute_accuracy
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Query, Form
 from fastapi.responses import JSONResponse, FileResponse
 from config import UPLOAD_DIR, SESSION_FILE, MODEL_PATH
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from far_prediction import predict_year
 from fastapi import BackgroundTasks
 import webbrowser
 import threading
@@ -67,6 +68,13 @@ async def predict_page(request: Request):
     """ Страница предсказания """
 
     return templates.TemplateResponse("predict.html", {"request": request, "years": list(range(2024, 2031))})
+
+
+@app.get("/far_predict/", response_class=HTMLResponse)
+async def far_predict_page(request: Request):
+    """ Страница предсказания """
+
+    return templates.TemplateResponse("far_predict.html", {"request": request, "years": list(range(2025, 2031))})
 
 
 @app.get("/plots/", response_class=HTMLResponse)
@@ -225,8 +233,31 @@ async def train(background_tasks: BackgroundTasks, use_existing: bool = Query(Tr
 
 
 @app.post("/predict/")
-async def predict(year: int = Form(...)):
+async def predict():
     """ API endpoint для предсказания температуры следующего года """
+
+    session_data = load_session()
+    if "file_path" not in session_data:
+        raise HTTPException(status_code=400, detail="Нет данных для предсказания")
+
+    file_path = session_data["file_path"]
+    data = load_data_from_txt(file_path, session_data["delimiter"], session_data["ignore_header"])
+    raw_prediction = predict_next_year(data)
+    prediction = raw_prediction["prediction"]
+    save_prediction(prediction, 2025)
+
+    return JSONResponse({
+        "prediction": [round(i, 2) for i in prediction[-1].tolist()],
+        "mae": raw_prediction["mae"],
+        "mse": raw_prediction["mse"],
+        "rmse": raw_prediction["rmse"],
+        "r2": raw_prediction["r2"]
+    })
+
+
+@app.post("/far_predict/")
+async def far_predict(year: int = Form(...)):
+    """ API endpoint для предсказания температуры годов 2025 - 2030 """
 
     session_data = load_session()
     if "file_path" not in session_data:

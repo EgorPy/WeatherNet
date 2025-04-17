@@ -113,11 +113,8 @@ def compute_accuracy(data, window_size=3):
     return {"mae": mae, "mse": mse, "rmse": rmse, "r2": r2_score}
 
 
-def predict_year(data, target_year, window_size=3, seed=None):
-    """ Предсказывает температуру выбранного года 2025 - 2030 используя обученную модель """
-
-    if not (2024 <= target_year <= 2030):
-        raise ValueError("Год должен быть в диапазоне от 2025 до 2030.")
+def predict_next_year(data, window_size=3):
+    """ Предсказывает температуру следующего года используя обученную модель """
 
     if not os.path.exists(MODEL_PATH):
         raise FileNotFoundError("Модель не обучена.")
@@ -125,25 +122,27 @@ def predict_year(data, target_year, window_size=3, seed=None):
     model = keras.models.load_model(MODEL_PATH, compile=False)
     model.compile(optimizer="adam", loss="mae")
 
-    if seed is not None:
-        np.random.seed(seed)
+    last_year = data[-window_size:].reshape(1, window_size, 12)
+    prediction = model.predict(last_year, verbose=0)[0]
 
-    steps = target_year - 2024
-    current_data = np.copy(data)  # shape: (N, 12)
+    actual_2024 = data[-1]  # = y
+    mae = np.mean(np.abs(prediction - actual_2024))
+    mse = np.mean((actual_2024 - prediction) ** 2)
+    rmse = np.sqrt(mse)
 
-    for _ in range(steps):
-        window = current_data[-window_size:]  # shape: (window_size, 12)
-        window_input = window.reshape(1, window_size, 12)
-        predicted = model.predict(window_input, verbose=0)[0]
+    ss_total = np.sum((actual_2024 - np.mean(actual_2024)) ** 2)
+    ss_residual = np.sum((actual_2024 - prediction) ** 2)
+    r2_score = 1 - (ss_residual / ss_total)
 
-        noise = np.random.normal(loc=0.0, scale=0.3, size=12)  # шум (+-0.5 градуса)
-        noisy_prediction = np.clip(predicted + noise, -100, 100)
-
-        current_data = np.vstack([current_data, noisy_prediction])
+    noise = np.random.normal(loc=0.0, scale=0.3, size=12)
+    noisy_prediction = np.clip(prediction + noise, -100, 100)
 
     return {
-        "year": target_year,
-        "prediction": current_data
+        "prediction": np.vstack([prediction, noisy_prediction]),
+        "mae": mae,
+        "mse": mse,
+        "rmse": rmse,
+        "r2": r2_score
     }
 
 
